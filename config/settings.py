@@ -25,7 +25,12 @@ SECRET_KEY = 'django-insecure-kw=0e1z_0ps_6(6%$vvv26sj@%2kj^3b%u^1$79qw*hta_=a5!
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    'book-search-app-wild-silence-8674.fly.dev',
+    '.fly.dev',  # Allow all Fly.io subdomains
+]
 
 
 # Application definition
