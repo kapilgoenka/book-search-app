@@ -1,6 +1,9 @@
 from django.shortcuts import render
 from django.core.paginator import Paginator
 from django.db.models import Q
+from django.http import JsonResponse
+from django.conf import settings
+import os
 from .models import Book
 
 
@@ -152,3 +155,42 @@ def book_search(request):
     }
 
     return render(request, 'books/search.html', context)
+
+
+def health_check(request):
+    """Health check endpoint for debugging deployment."""
+    from django.db import connection
+
+    status = {
+        'status': 'ok',
+        'database': {
+            'path': str(settings.DATABASES['default']['NAME']),
+            'exists': os.path.exists(settings.DATABASES['default']['NAME']),
+        },
+        'data_directory': {
+            'exists': os.path.exists('/data'),
+            'writable': os.access('/data', os.W_OK) if os.path.exists('/data') else False,
+        },
+        'environment': {
+            'debug': settings.DEBUG,
+            'allowed_hosts': settings.ALLOWED_HOSTS,
+        }
+    }
+
+    # Try to check database connection
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        status['database']['connection'] = 'ok'
+
+        # Try to count books
+        try:
+            count = Book.objects.count()
+            status['books_count'] = count
+        except Exception as e:
+            status['books_count'] = f'Error: {str(e)}'
+
+    except Exception as e:
+        status['database']['connection'] = f'Error: {str(e)}'
+
+    return JsonResponse(status)
