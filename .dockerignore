@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Django
+*.log
+db.sqlite3
+db.sqlite3-journal
+*.sqlite3
+media/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Git
+.git/
+.gitignore
+
+# UV
+uv.lock
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Documentation
+*.md
+!README.md
+
+# Deployment
+fly.toml
+
+# Other
+*.bak
+*.tmp
