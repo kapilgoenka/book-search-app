@@ -25,8 +25,9 @@ RUN mkdir -p /code/staticfiles /code/media
 # Collect static files
 RUN python manage.py collectstatic --noinput --clear || true
 
-# Run migrations (optional - comment out if you prefer to run manually)
-# RUN python manage.py migrate --noinput || true
+# Run migrations and import data into the image
+RUN python manage.py migrate --noinput && \
+    python manage.py import_books books.csv
 
 EXPOSE 8000
 
