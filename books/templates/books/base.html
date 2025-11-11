@@ -18,15 +18,31 @@
         }
 
         header {
-            background: linear-gradient(135deg, #4a5568 0%, #2d3748 100%);
+            background: #000000;
             color: white;
+            padding: 0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        }
+
+        .header-content {
+            max-width: 1600px;
+            margin: 0 auto;
             padding: 1.5rem 2rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo {
+            font-size: 2rem;
+            display: flex;
+            align-items: center;
         }
 
         header h1 {
             font-size: 1.8rem;
             font-weight: 600;
+            margin: 0;
         }
 
         .container {
@@ -307,7 +323,10 @@
 </head>
 <body>
     <header>
-        <h1>Book Search</h1>
+        <div class="header-content">
+            <div class="logo">📚</div>
+            <h1>Book Search</h1>
+        </div>
     </header>
 
     {% block content %}{% endblock %}
