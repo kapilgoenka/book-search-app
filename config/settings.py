@@ -78,18 +78,12 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-import os
-
-# Use persistent storage for production on Fly.io
-if os.path.exists('/data'):
-    DB_PATH = Path('/data/db.sqlite3')
-else:
-    DB_PATH = BASE_DIR / 'db.sqlite3'
-
+# Use /code/db.sqlite3 for both development and production
+# The database will be recreated on each deploy via release_command
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': DB_PATH,
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
