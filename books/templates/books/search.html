@@ -1,0 +1,236 @@
+{% extends 'books/base.html' %}
+
+{% block content %}
+<div class="container">
+    <!-- Left Pane: Search Panel -->
+    <div class="search-panel">
+        <h2 class="section-title">Search Filters</h2>
+        <form method="get" action="{% url 'books:search' %}" id="searchForm">
+            <!-- Basic Information -->
+            <div class="form-group">
+                <label for="title">Title</label>
+                <input type="text" id="title" name="title" value="{{ request.GET.title }}" placeholder="Search by title...">
+            </div>
+
+            <div class="form-group">
+                <label for="authors">Authors</label>
+                <input type="text" id="authors" name="authors" value="{{ request.GET.authors }}" placeholder="Search by author...">
+            </div>
+
+            <div class="form-group">
+                <label for="publisher">Publisher</label>
+                <input type="text" id="publisher" name="publisher" value="{{ request.GET.publisher }}" placeholder="Search by publisher...">
+            </div>
+
+            <!-- Identifiers -->
+            <h3 class="section-title" style="margin-top: 1.5rem;">Identifiers</h3>
+
+            <div class="form-group">
+                <label for="isbn">ISBN</label>
+                <input type="text" id="isbn" name="isbn" value="{{ request.GET.isbn }}" placeholder="Exact ISBN match">
+            </div>
+
+            <div class="form-group">
+                <label for="isbn13">ISBN13</label>
+                <input type="text" id="isbn13" name="isbn13" value="{{ request.GET.isbn13 }}" placeholder="Exact ISBN13 match">
+            </div>
+
+            <!-- Ratings & Reviews -->
+            <h3 class="section-title" style="margin-top: 1.5rem;">Ratings & Reviews</h3>
+
+            <div class="form-group">
+                <label>Average Rating</label>
+                <div class="range-inputs">
+                    <input type="number" name="avg_rating_min" value="{{ request.GET.avg_rating_min }}"
+                           placeholder="Min" step="0.1" min="0" max="5">
+                    <input type="number" name="avg_rating_max" value="{{ request.GET.avg_rating_max }}"
+                           placeholder="Max" step="0.1" min="0" max="5">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Ratings Count</label>
+                <div class="range-inputs">
+                    <input type="number" name="ratings_count_min" value="{{ request.GET.ratings_count_min }}"
+                           placeholder="Min" min="0">
+                    <input type="number" name="ratings_count_max" value="{{ request.GET.ratings_count_max }}"
+                           placeholder="Max" min="0">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Text Reviews Count</label>
+                <div class="range-inputs">
+                    <input type="number" name="text_reviews_min" value="{{ request.GET.text_reviews_min }}"
+                           placeholder="Min" min="0">
+                    <input type="number" name="text_reviews_max" value="{{ request.GET.text_reviews_max }}"
+                           placeholder="Max" min="0">
+                </div>
+            </div>
+
+            <!-- Publication Details -->
+            <h3 class="section-title" style="margin-top: 1.5rem;">Publication</h3>
+
+            <div class="form-group">
+                <label for="language_code">Language</label>
+                <select id="language_code" name="language_code">
+                    <option value="">All Languages</option>
+                    {% for lang in language_codes %}
+                        <option value="{{ lang }}" {% if request.GET.language_code == lang %}selected{% endif %}>
+                            {{ lang }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Publication Date</label>
+                <div class="range-inputs">
+                    <input type="date" name="pub_date_min" value="{{ request.GET.pub_date_min }}" placeholder="From">
+                    <input type="date" name="pub_date_max" value="{{ request.GET.pub_date_max }}" placeholder="To">
+                </div>
+            </div>
+
+            <!-- Physical Details -->
+            <h3 class="section-title" style="margin-top: 1.5rem;">Physical</h3>
+
+            <div class="form-group">
+                <label>Number of Pages</label>
+                <div class="range-inputs">
+                    <input type="number" name="num_pages_min" value="{{ request.GET.num_pages_min }}"
+                           placeholder="Min" min="0">
+                    <input type="number" name="num_pages_max" value="{{ request.GET.num_pages_max }}"
+                           placeholder="Max" min="0">
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="button-group">
+                <button type="submit" class="btn-search">Search</button>
+                <button type="button" class="btn-reset" onclick="resetForm()">Reset</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Right Pane: Results Panel -->
+    <div class="results-panel">
+        {% if filters_applied or request.GET %}
+            <div class="results-header">
+                <div class="results-count">
+                    <strong>{{ total_results }}</strong> book{{ total_results|pluralize }} found
+                </div>
+            </div>
+
+            {% if page_obj %}
+                {% for book in page_obj %}
+                    <div class="book-card">
+                        <div class="book-thumbnail">
+                            {% if book.isbn13 %}
+                                <img src="https://covers.openlibrary.org/b/isbn/{{ book.isbn13 }}-M.jpg"
+                                     alt="{{ book.title }}"
+                                     onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22150%22%3E%3Crect width=%22100%22 height=%22150%22 fill=%22%23e0e0e0%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2212%22 fill=%22%23999%22%3ENo Cover%3C/text%3E%3C/svg%3E';">
+                            {% elif book.isbn %}
+                                <img src="https://covers.openlibrary.org/b/isbn/{{ book.isbn }}-M.jpg"
+                                     alt="{{ book.title }}"
+                                     onerror="this.onerror=null; this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22150%22%3E%3Crect width=%22100%22 height=%22150%22 fill=%22%23e0e0e0%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-size=%2212%22 fill=%22%23999%22%3ENo Cover%3C/text%3E%3C/svg%3E';">
+                            {% else %}
+                                <svg xmlns="http://www.w3.org/2000/svg" width="100" height="150">
+                                    <rect width="100" height="150" fill="#e0e0e0"/>
+                                    <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle"
+                                          font-family="Arial" font-size="12" fill="#999">No Cover</text>
+                                </svg>
+                            {% endif %}
+                        </div>
+                        <div class="book-info">
+                            <div class="book-title">{{ book.title }}</div>
+                            <div class="book-authors">by {{ book.authors }}</div>
+
+                            {% if book.average_rating %}
+                                <span class="rating">★ {{ book.average_rating }}</span>
+                            {% endif %}
+
+                            <div class="book-meta">
+                                {% if book.publication_date %}
+                                    <div class="book-meta-item">
+                                        📅 {{ book.publication_date|date:"Y" }}
+                                    </div>
+                                {% endif %}
+                                {% if book.publisher %}
+                                    <div class="book-meta-item">
+                                        🏢 {{ book.publisher }}
+                                    </div>
+                                {% endif %}
+                                {% if book.num_pages %}
+                                    <div class="book-meta-item">
+                                        📄 {{ book.num_pages }} pages
+                                    </div>
+                                {% endif %}
+                                <div class="book-meta-item">
+                                    🌐 {{ book.language_code }}
+                                </div>
+                                {% if book.ratings_count %}
+                                    <div class="book-meta-item">
+                                        👥 {{ book.ratings_count }} ratings
+                                    </div>
+                                {% endif %}
+                                {% if book.isbn13 %}
+                                    <div class="book-meta-item">
+                                        📚 ISBN13: {{ book.isbn13 }}
+                                    </div>
+                                {% elif book.isbn %}
+                                    <div class="book-meta-item">
+                                        📚 ISBN: {{ book.isbn }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+
+                <!-- Pagination -->
+                {% if page_obj.has_other_pages %}
+                    <div class="pagination">
+                        {% if page_obj.has_previous %}
+                            <a href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page=1">First</a>
+                            <a href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.previous_page_number }}">Previous</a>
+                        {% endif %}
+
+                        <span class="current">
+                            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                        </span>
+
+                        {% if page_obj.has_next %}
+                            <a href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.next_page_number }}">Next</a>
+                            <a href="?{% for key, value in request.GET.items %}{% if key != 'page' %}{{ key }}={{ value }}&{% endif %}{% endfor %}page={{ page_obj.paginator.num_pages }}">Last</a>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            {% else %}
+                <div class="no-results">
+                    <div class="no-results-icon">📚</div>
+                    <h2>No books found</h2>
+                    <p>Try adjusting your search filters</p>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="results-header">
+                <div class="results-count">
+                    Use the search panel to find books
+                </div>
+            </div>
+            <div class="no-results">
+                <div class="no-results-icon">🔍</div>
+                <h2>Start Searching</h2>
+                <p>Use the filters on the left to search through {{ total_results }} books</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    function resetForm() {
+        document.getElementById('searchForm').reset();
+        window.location.href = '{% url "books:search" %}';
+    }
+</script>
+{% endblock %}

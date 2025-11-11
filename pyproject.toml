@@ -1,0 +1,8 @@
+[project]
+name = "book-search-app"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.14"
+dependencies = [
+    "django>=5.2.8",
+]
