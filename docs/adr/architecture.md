@@ -1,7 +1,7 @@
 # ADR: Book Search Application Architecture
 
 **Status:** Living document — updated commit by commit  
-**Last updated:** 541cc8a — Initial commit
+**Last updated:** ffbfab6 — Add PRD and Quick Start documentation
 
 ---
 
@@ -87,6 +87,14 @@ Book cover images are fetched directly from the Open Library API using ISBN. Thi
 **Chosen:** Python 3.12 (pinned via `.python-version`)
 
 Initial version was 3.14 (alpha), immediately corrected to 3.12 — a stable LTS-track release compatible with all dependencies.
+
+---
+
+## Decision 7a: Documentation Strategy
+
+**Chosen:** Markdown docs (`PRD.md`, `QUICK_START.md`, `README.md`) committed to the repo
+
+Product requirements live in `PRD.md` (what the app should do and why). Developer onboarding lives in `QUICK_START.md` (how to run it locally). `README.md` covers usage. All docs are co-located with code so they stay in sync with the implementation.
 
 ---
 
