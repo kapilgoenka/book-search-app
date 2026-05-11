@@ -28,8 +28,8 @@ DEBUG = True
 ALLOWED_HOSTS = [
     'localhost',
     '127.0.0.1',
-    'book-search-app-wild-silence-8674.fly.dev',
-    '.fly.dev',  # Allow all Fly.io subdomains
+    '.fly.dev',
+    '.up.railway.app',
 ]
 
 
