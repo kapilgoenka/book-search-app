@@ -1,7 +1,7 @@
 # ADR: Book Search Application Architecture
 
 **Status:** Living document — updated commit by commit  
-**Last updated:** 12307bf — Fix database migration and persistence for Fly.io
+**Last updated:** 533bddf — Add health check endpoint for debugging
 
 ---
 
@@ -165,3 +165,18 @@ A `release_command` was added to run migrations and import data on each deploy:
 **Problem encountered:** Fly.io does **not** mount volumes during the `release_command` phase — the volume is only available to the running app process. So `release.sh` created the database at `/code/db.sqlite3`, but the running app looked for it at `/data/db.sqlite3` (which was empty).
 
 A secondary bug: `fly.toml` used `[mounts]` (single table) instead of `[[mounts]]` (array of tables), which caused the mount to be silently ignored. Fixed in a13b8b1.
+
+---
+
+## Decision 10: Health Check Endpoint for Deployment Observability
+
+**Chosen:** `/health/` JSON endpoint (`books/views.py::health_check`)
+
+To diagnose the volume-mount issues, a `/health/` endpoint was added that returns a JSON payload with:
+- Database path and whether the file exists on disk
+- `/data` directory existence and writability
+- Django `DEBUG` flag and `ALLOWED_HOSTS`
+- Live database connection test (`SELECT 1`)
+- Book count query result
+
+This endpoint is not protected by authentication. It is appropriate for a non-sensitive read-only catalog but would require auth or removal before exposing user data.
