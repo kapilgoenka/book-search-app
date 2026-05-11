@@ -1,7 +1,7 @@
 # ADR: Book Search Application Architecture
 
 **Status:** Living document — updated commit by commit  
-**Last updated:** d4e2d12 — Update navbar styling with book logo and constrained width
+**Last updated:** Default landing page shows top-rated books
 
 ---
 
@@ -238,3 +238,20 @@ The UI uses inline `<style>` blocks in the base template rather than separate CS
 - Book logo: 📚 emoji used as a lightweight brand mark
 
 **Why inline CSS over a framework:** For a single-page app with one developer, a framework adds dependency management and a learning curve that isn't justified. The template is self-contained and the styling is straightforward enough to maintain inline.
+
+---
+
+## Decision 12: Default Landing Page — Top Rated Books
+
+**Chosen:** Show top-rated books by default instead of an empty state
+
+The original landing page showed a "Start Searching" placeholder when no filters were applied. This was replaced with a default query that surfaces the top-rated books immediately on load.
+
+**Query:** `Book.objects.filter(ratings_count__gte=1000).order_by('-average_rating', 'title')`
+
+- `ratings_count__gte=1000` — filters out books with very few ratings, which tend to have artificially inflated average scores (a book with one 5-star review ranks higher than a book with 50,000 ratings averaging 4.8). 1,000 was chosen as a threshold that surfaces well-known titles without being so high it excludes good niche books.
+- `order_by('-average_rating', 'title')` — primary sort by rating descending, secondary by title for stable tie-breaking.
+
+**Template change:** The `{% if filters_applied or request.GET %}` gate was removed. The results panel now always renders. When `showing_top_rated` is True, the header reads "Top Rated Books"; when filters are active, it shows the result count as before.
+
+**Why not most popular (by ratings_count)?** Most popular would surface the most-read books, but those are already universally known (Harry Potter, Twilight, etc.). Top-rated with a meaningful count floor surfaces high-quality books that users may not have encountered.

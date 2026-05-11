@@ -142,6 +142,9 @@ def book_search(request):
             books = books.filter(publisher__icontains=publisher)
             filters_applied = True
 
+    if not filters_applied:
+        books = Book.objects.filter(ratings_count__gte=1000).order_by('-average_rating', 'title')
+
     # Pagination
     paginator = Paginator(books, 25)  # 25 books per page
     page_number = request.GET.get('page', 1)
@@ -152,6 +155,7 @@ def book_search(request):
         'language_codes': language_codes,
         'filters_applied': filters_applied,
         'total_results': paginator.count,
+        'showing_top_rated': not filters_applied,
     }
 
     return render(request, 'books/search.html', context)

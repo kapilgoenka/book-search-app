@@ -114,10 +114,14 @@
 
     <!-- Right Pane: Results Panel -->
     <div class="results-panel">
-        {% if filters_applied or request.GET %}
+        {% if True %}
             <div class="results-header">
                 <div class="results-count">
-                    <strong>{{ total_results }}</strong> book{{ total_results|pluralize }} found
+                    {% if showing_top_rated %}
+                        Top Rated Books
+                    {% else %}
+                        <strong>{{ total_results }}</strong> book{{ total_results|pluralize }} found
+                    {% endif %}
                 </div>
             </div>
 
@@ -212,17 +216,6 @@
                     <p>Try adjusting your search filters</p>
                 </div>
             {% endif %}
-        {% else %}
-            <div class="results-header">
-                <div class="results-count">
-                    Use the search panel to find books
-                </div>
-            </div>
-            <div class="no-results">
-                <div class="no-results-icon">🔍</div>
-                <h2>Start Searching</h2>
-                <p>Use the filters on the left to search through {{ total_results }} books</p>
-            </div>
         {% endif %}
     </div>
 </div>
