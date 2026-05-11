@@ -36,9 +36,6 @@ db.sqlite3-journal
 media/
 staticfiles/
 
-# UV
-uv.lock
-
 # IDE
 .vscode/
 .idea/
