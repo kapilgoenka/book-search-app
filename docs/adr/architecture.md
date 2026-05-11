@@ -1,7 +1,7 @@
 # ADR: Book Search Application Architecture
 
 **Status:** Living document — updated commit by commit  
-**Last updated:** d25b283 — Fix DisallowedHost error for Fly.io deployment
+**Last updated:** 12307bf — Fix database migration and persistence for Fly.io
 
 ---
 
@@ -128,3 +128,40 @@ Dependencies are declared in `pyproject.toml`; the lockfile is `uv.lock`.
 **Static files:** `STATIC_ROOT = BASE_DIR / 'staticfiles'` and `MEDIA_ROOT = BASE_DIR / 'media'` configured in `settings.py`. Collected into the image at build time.
 
 **`ALLOWED_HOSTS`:** Set to `['localhost', '127.0.0.1', 'book-search-app-wild-silence-8674.fly.dev', '.fly.dev']`. The `.fly.dev` wildcard covers all Fly.io preview URLs. `DEBUG` remains `True` in production (acceptable for a non-sensitive read-only catalog; a future hardening step would set this via an env var).
+
+---
+
+## Decision 9: Database Persistence on Fly.io (Evolution)
+
+SQLite is a file on disk. Fly.io machines use ephemeral filesystems that are wiped on each deployment. This forced an explicit decision about where the database lives in production. The solution evolved through three phases.
+
+### Phase 1 — Persistent Volume (12307bf, 849361c, a13b8b1) ❌ Did not work
+
+**Approach:** Mount a Fly.io persistent volume at `/data` and store the database there.
+
+`fly.toml`:
+```toml
+[[mounts]]
+  source = 'data'
+  destination = '/data'
+```
+
+`settings.py`: Database path switched at runtime using `os.path.exists('/data')`:
+```python
+if os.path.exists('/data'):
+    DB_PATH = Path('/data/db.sqlite3')
+else:
+    DB_PATH = BASE_DIR / 'db.sqlite3'
+```
+
+A `release_command` was added to run migrations and import data on each deploy:
+```toml
+[deploy]
+  release_command = 'sh release.sh'
+```
+
+`release.sh` runs `manage.py migrate --noinput` then `manage.py import_books books.csv` sequentially with `set -e`.
+
+**Problem encountered:** Fly.io does **not** mount volumes during the `release_command` phase — the volume is only available to the running app process. So `release.sh` created the database at `/code/db.sqlite3`, but the running app looked for it at `/data/db.sqlite3` (which was empty).
+
+A secondary bug: `fly.toml` used `[mounts]` (single table) instead of `[[mounts]]` (array of tables), which caused the mount to be silently ignored. Fixed in a13b8b1.
