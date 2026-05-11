@@ -1,7 +1,7 @@
 # ADR: Book Search Application Architecture
 
 **Status:** Living document — updated commit by commit  
-**Last updated:** PostgreSQL migration, Docker Compose local dev, book detail page
+**Last updated:** Railway deployment, Supabase production DB, dark theme toggle
 
 ---
 
@@ -46,7 +46,22 @@ DATABASES = {
 
 `conn_max_age=600` enables persistent connections (Django connection pooling) — connections are reused for up to 10 minutes instead of being opened and closed per request.
 
-`DATABASE_URL` is injected by Docker Compose at runtime (`postgresql://postgres:postgres@db:5432/book_search`), with the `db` hostname resolving to the Postgres container on the shared compose network.
+`DATABASE_URL` is environment-specific:
+- **Local (Docker Compose):** `postgresql://postgres:postgres@db:5432/book_search` — the `db` hostname resolves to the Postgres container on the shared compose network.
+- **Production (Railway):** Points to Supabase (see below).
+
+**Production database: Supabase**
+
+Supabase is used as the managed PostgreSQL host in production. The direct connection string (`db.PROJECT_REF.supabase.co:5432`) resolves to an IPv6 address; Railway's network does not support IPv6 outbound connections, so the **Supabase connection pooler** is used instead.
+
+Pooler connection string format:
+```
+postgresql://postgres.PROJECT_REF:PASSWORD@aws-1-us-east-1.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+**Session mode pooler (port 5432) is required for Django** — transaction mode (port 6543) does not support advisory locks, which Django's migration framework uses. `sslmode=require` is appended because Supabase enforces TLS.
+
+`conn_max_age=600` is compatible with session mode pooling — each Django worker holds a persistent connection for up to 10 minutes.
 
 **Data model (`Book`):**
 
@@ -133,24 +148,26 @@ Dependencies are declared in `pyproject.toml`; the lockfile is `uv.lock`.
 
 ## Decision 8: Containerization and Production Server
 
-**Chosen:** Docker + Gunicorn, deployed to Fly.io
+**Chosen:** Docker + Gunicorn, deployed to Railway
 
-**Docker:** The app is containerized using a `python:3.12-slim` base image. UV installs dependencies system-wide (`uv pip install --system`). Static files are collected at build time (`collectstatic`). The image is built remotely on Fly.io's infrastructure (`flyctl deploy --remote-only`).
+**Docker:** The app is containerized using a `python:3.12-slim` base image. UV installs dependencies system-wide (`uv pip install --system --no-cache -r pyproject.toml`), reading from `uv.lock` for pinned versions. Static files are collected at build time (`collectstatic`). `uv.lock` is committed to the repository (removed from `.gitignore`) so Railway's build environment gets exact versions.
 
-**Gunicorn:** Django's development server is replaced with Gunicorn for production (`gunicorn --bind :8000 --workers 2 config.wsgi`). Two workers are configured, sized for the 1GB / 1 shared-CPU Fly.io VM.
+**Gunicorn:** Django's development server is replaced with Gunicorn for production (`gunicorn --bind :8000 --workers 2 config.wsgi`). Two workers handle concurrent requests.
 
-**Fly.io:** Chosen as the deployment platform. Key configuration (`fly.toml`):
-- App name: `book-search-app-wild-silence-8674`
-- Primary region: `sjc` (San Jose)
-- Auto-stop when idle, auto-start on request, minimum 0 machines running (scales to zero)
-- 1GB RAM, 1 shared CPU
-- Static files served by Fly.io's edge directly from `/code/static`
+**Railway:** Current deployment platform, replacing Fly.io (whose free trial expired). Railway auto-deploys on every push to `main` by detecting the `Dockerfile` in the repository root. No CI/CD config file is required — Railway's GitHub integration handles it natively.
 
-**CI/CD:** GitHub Actions workflow (`.github/workflows/fly-deploy.yml`) triggers `flyctl deploy --remote-only` on every push to `main`, using a `FLY_API_TOKEN` secret.
+Key configuration:
+- Public URL: `book-search-app-wild-silence-8674-production.up.railway.app`
+- `DATABASE_URL` injected as a Railway secret (points to Supabase — see Decision 2)
+- `PORT=8000` set as a Railway environment variable
 
-**Static files:** `STATIC_ROOT = BASE_DIR / 'staticfiles'` and `MEDIA_ROOT = BASE_DIR / 'media'` configured in `settings.py`. Collected into the image at build time.
+**Why Railway over Fly.io:** Fly.io's free trial expired and requires a credit card. Railway has a comparable free tier with native GitHub integration and no CLI setup required for deployment.
 
-**`ALLOWED_HOSTS`:** Set to `['localhost', '127.0.0.1', 'book-search-app-wild-silence-8674.fly.dev', '.fly.dev']`. The `.fly.dev` wildcard covers all Fly.io preview URLs. `DEBUG` remains `True` in production (acceptable for a non-sensitive read-only catalog; a future hardening step would set this via an env var).
+**Fly.io (previous):** `fly.toml` remains in the repo for reference. It configured auto-stop/auto-start on a 1GB/1-CPU VM in the `sjc` region. A `release_command` in `fly.toml` pointed to `release.sh` for pre-deploy migrations and book import.
+
+**`ALLOWED_HOSTS`:** Set to `['localhost', '127.0.0.1', '.fly.dev', '.up.railway.app']` — wildcard subdomains for both platforms. `DEBUG` remains `True` in production (acceptable for a non-sensitive read-only catalog).
+
+**Static files:** Collected into the image at build time via `collectstatic`. On Railway, static files are served by Gunicorn directly (no edge CDN layer, unlike Fly.io's `[[statics]]` config).
 
 ---
 
@@ -217,7 +234,7 @@ This endpoint is not protected by authentication. It is appropriate for a non-se
 
 Inline `<style>` block in `base.html`, no CSS framework. Dark palette centered on `#1a1a1a` body / `#2d2d2d` panels. Max content width 1600px. Flexbox two-pane layout. System font stack (`-apple-system`, `Segoe UI`, etc.).
 
-### Phase 2 — Full Redesign (current)
+### Phase 2 — Full Redesign
 
 The dark theme was replaced wholesale with a light editorial design system. The redesign touches every visual layer.
 
@@ -258,6 +275,42 @@ Fonts are loaded via two `<link rel="preconnect">` hints + one stylesheet import
 **Book cover placeholder:** CSS hatched background using two layered `repeating-linear-gradient` patterns, replacing the old SVG inline fallback. Same Open Library ISBN cover API for real covers with `onerror` fallback to the placeholder.
 
 **Number formatting:** `django.contrib.humanize` added to `INSTALLED_APPS`; `{% load humanize %}` + `|intcomma` used in the template for ratings counts and page totals (e.g. "32,213 ratings" instead of "32213").
+
+### Phase 3 — User-Toggleable Dark Mode (current)
+
+A dark theme was added back as a user-controlled toggle on top of the Phase 2 light system. Rather than replacing the light theme, both coexist via a `[data-theme="dark"]` attribute on `<html>`.
+
+**Implementation:**
+
+A flash-prevention script runs synchronously in `<head>` before first paint:
+```html
+<script>
+  (function() {
+    if (localStorage.getItem('theme') === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  })();
+</script>
+```
+
+CSS overrides all 10 custom properties under `[data-theme="dark"]`:
+
+| Variable | Light value | Dark value |
+|---|---|---|
+| `--bg` | `#f6f4ef` | `#171614` |
+| `--paper` | `#ffffff` | `#1e1c1a` |
+| `--ink` | `#1a1a1a` | `#edeae3` |
+| `--ink-2` | `#44443f` | `#b8b4ad` |
+| `--ink-3` | `#76746d` | `#857f78` |
+| `--ink-4` | `#a9a69d` | `#534f4a` |
+| `--rule` | `#e6e2d7` | `#2c2a27` |
+| `--rule-2` | `#efece4` | `#252320` |
+| `--accent` | `oklch(0.55 0.10 55)` | `oklch(0.70 0.10 55)` |
+| `--focus` | `oklch(0.55 0.10 55 / 0.25)` | `oklch(0.70 0.10 55 / 0.20)` |
+
+The accent is brightened from `0.55` to `0.70` lightness in dark mode for legibility on dark backgrounds while keeping the same hue and chroma. All other components (layout, typography, cover placeholders) automatically adapt because they reference only CSS variables — no dark-specific structural rules are needed.
+
+A moon/sun icon button in the header toggles the attribute and persists the choice to `localStorage`. The icon switches (moon shown in light mode, sun in dark mode) via CSS `display` rules scoped to `[data-theme="dark"]`.
 
 ---
 
