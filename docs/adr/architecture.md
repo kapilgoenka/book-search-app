@@ -1,7 +1,7 @@
 # ADR: Book Search Application Architecture
 
 **Status:** Living document — updated commit by commit  
-**Last updated:** 727820f — Bake database into Docker image
+**Last updated:** d4e2d12 — Update navbar styling with book logo and constrained width
 
 ---
 
@@ -211,3 +211,30 @@ To diagnose the volume-mount issues, a `/health/` endpoint was added that return
 - Book count query result
 
 This endpoint is not protected by authentication. It is appropriate for a non-sensitive read-only catalog but would require auth or removal before exposing user data.
+
+---
+
+## Decision 11: UI — Dark Theme and Layout
+
+**Chosen:** Dark theme implemented via inline CSS in `books/templates/books/base.html`
+
+The UI uses inline `<style>` blocks in the base template rather than separate CSS files. No CSS framework (Bootstrap, Tailwind) is used; all styling is hand-written.
+
+**Color palette (dark theme, b616967):**
+
+| Element | Color |
+|---|---|
+| Body background | `#1a1a1a` |
+| Panels (search / results) | `#2d2d2d` |
+| Navbar | `#000000` |
+| Primary text | `#e0e0e0` |
+| Secondary text | `#b0b0b0` |
+| Input backgrounds | Dark with lighter borders |
+
+**Layout:**
+- Two-pane layout: search filters panel on the left, results on the right
+- Max content width: 1600px, centered
+- Navbar constrained to match content width (1600px max, centered with `margin: 0 auto`)
+- Book logo: 📚 emoji used as a lightweight brand mark
+
+**Why inline CSS over a framework:** For a single-page app with one developer, a framework adds dependency management and a learning curve that isn't justified. The template is self-contained and the styling is straightforward enough to maintain inline.
