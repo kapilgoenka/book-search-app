@@ -1,7 +1,7 @@
 # ADR: Book Search Application Architecture
 
 **Status:** Living document — updated commit by commit  
-**Last updated:** d0e06a2 — Update Dockerfile to use UV instead of Poetry
+**Last updated:** d25b283 — Fix DisallowedHost error for Fly.io deployment
 
 ---
 
@@ -126,3 +126,5 @@ Dependencies are declared in `pyproject.toml`; the lockfile is `uv.lock`.
 **CI/CD:** GitHub Actions workflow (`.github/workflows/fly-deploy.yml`) triggers `flyctl deploy --remote-only` on every push to `main`, using a `FLY_API_TOKEN` secret.
 
 **Static files:** `STATIC_ROOT = BASE_DIR / 'staticfiles'` and `MEDIA_ROOT = BASE_DIR / 'media'` configured in `settings.py`. Collected into the image at build time.
+
+**`ALLOWED_HOSTS`:** Set to `['localhost', '127.0.0.1', 'book-search-app-wild-silence-8674.fly.dev', '.fly.dev']`. The `.fly.dev` wildcard covers all Fly.io preview URLs. `DEBUG` remains `True` in production (acceptable for a non-sensitive read-only catalog; a future hardening step would set this via an env var).
