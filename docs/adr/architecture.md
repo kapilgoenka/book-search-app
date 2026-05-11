@@ -1,7 +1,7 @@
 # ADR: Book Search Application Architecture
 
 **Status:** Living document — updated commit by commit  
-**Last updated:** Full UI redesign — light design system, global search, sort
+**Last updated:** PostgreSQL migration, Docker Compose local dev, book detail page
 
 ---
 
@@ -19,11 +19,34 @@ Django was chosen over lighter alternatives (Flask, FastAPI) because it provides
 
 ---
 
-## Decision 2: SQLite as the Database
+## Decision 2: Database — SQLite → PostgreSQL
 
-**Chosen:** SQLite (via Django's default backend)
+### Original choice: SQLite
 
-The dataset is read-only — 11,127 books imported once from a CSV. SQLite is a single-file database that requires no server process, is trivially portable, and performs well for read-heavy workloads at this scale. A server-based database (PostgreSQL, MySQL) would add operational overhead without benefit for this use case.
+The dataset is read-only — 11,127 books imported once from a CSV. SQLite was chosen because it requires no server process and is trivially portable. (See Decision 9 for the full evolution of how this played out on Fly.io.)
+
+### Current choice: PostgreSQL 16
+
+SQLite was replaced with PostgreSQL after the app was fully Dockerized. The trigger was containerization: once the app runs in Docker Compose, a managed Postgres container (`postgres:16-alpine`) is as operationally simple as SQLite, and it unlocks proper concurrent access, standard connection pooling, and compatibility with Fly.io's managed Postgres offering for production.
+
+**Dependencies added:**
+- `psycopg2-binary>=2.9` — Postgres adapter for Python
+- `dj-database-url>=2.0` — parses a `DATABASE_URL` env var into Django's `DATABASES` dict
+
+**Settings (`config/settings.py`):**
+```python
+import dj_database_url
+DATABASES = {
+    'default': dj_database_url.config(
+        default='postgresql://postgres:postgres@localhost:5432/book_search',
+        conn_max_age=600,
+    )
+}
+```
+
+`conn_max_age=600` enables persistent connections (Django connection pooling) — connections are reused for up to 10 minutes instead of being opened and closed per request.
+
+`DATABASE_URL` is injected by Docker Compose at runtime (`postgresql://postgres:postgres@db:5432/book_search`), with the `db` hostname resolving to the Postgres container on the shared compose network.
 
 **Data model (`Book`):**
 
@@ -131,71 +154,45 @@ Dependencies are declared in `pyproject.toml`; the lockfile is `uv.lock`.
 
 ---
 
-## Decision 9: Database Persistence on Fly.io (Evolution)
+## Decision 9: Database Persistence — Evolution
 
-SQLite is a file on disk. Fly.io machines use ephemeral filesystems that are wiped on each deployment. This forced an explicit decision about where the database lives in production. The solution evolved through three phases.
+This decision evolved through four phases as the app moved from a simple local project to a fully containerized one.
 
 ### Phase 1 — Persistent Volume (12307bf, 849361c, a13b8b1) ❌ Did not work
 
-**Approach:** Mount a Fly.io persistent volume at `/data` and store the database there.
+**Approach:** Mount a Fly.io persistent volume at `/data` and store SQLite there.
 
-`fly.toml`:
-```toml
-[[mounts]]
-  source = 'data'
-  destination = '/data'
-```
-
-`settings.py`: Database path switched at runtime using `os.path.exists('/data')`:
-```python
-if os.path.exists('/data'):
-    DB_PATH = Path('/data/db.sqlite3')
-else:
-    DB_PATH = BASE_DIR / 'db.sqlite3'
-```
-
-A `release_command` was added to run migrations and import data on each deploy:
-```toml
-[deploy]
-  release_command = 'sh release.sh'
-```
-
-`release.sh` runs `manage.py migrate --noinput` then `manage.py import_books books.csv` sequentially with `set -e`.
-
-**Problem encountered:** Fly.io does **not** mount volumes during the `release_command` phase — the volume is only available to the running app process. So `release.sh` created the database at `/code/db.sqlite3`, but the running app looked for it at `/data/db.sqlite3` (which was empty).
-
-A secondary bug: `fly.toml` used `[mounts]` (single table) instead of `[[mounts]]` (array of tables), which caused the mount to be silently ignored. Fixed in a13b8b1.
+**Problem:** Fly.io does **not** mount volumes during `release_command` — only during the running app. The `release_command` created the DB at `/code/db.sqlite3` but the app looked for it at `/data/db.sqlite3`. A secondary bug: `fly.toml` used `[mounts]` (single table) instead of `[[mounts]]` (array of tables), silently ignoring the mount.
 
 ### Phase 2 — Ephemeral Storage (b6d58b6) ❌ Works but fragile
 
-**Approach:** Accept that the volume cannot be used during `release_command`. Instead, store the database at `/code/db.sqlite3` in both dev and prod. The `release_command` creates it there, and the app reads it from the same location.
+**Approach:** Drop the volume. Store SQLite at `/code/db.sqlite3` in both dev and prod. Recreate on every deploy via `release_command`.
 
-This meant the volume mount was removed entirely and the runtime path check (`os.path.exists('/data')`) was deleted. The database is recreated fresh on every deployment via `release_command`.
+**Problem:** `release_command` runs in a separate container. Files written there are not guaranteed to carry into the running app container.
 
-**Trade-off acknowledged in the commit message:** "For a production app with user-generated data, you'd want to use PostgreSQL. For this read-only book catalog, ephemeral storage is fine."
+### Phase 3 — SQLite Baked into Docker Image (727820f) ✅ Worked for read-only
 
-**Remaining problem:** `release_command` runs in a separate container from the main app. Files written during `release_command` are not guaranteed to persist into the app container's filesystem. This makes the database unreliable between the release phase and app startup.
-
-### Phase 3 — Database Baked into Docker Image (727820f) ✅ Current approach
-
-**Approach:** Run migrations and data import as `RUN` steps inside the `Dockerfile`, making the pre-populated SQLite database part of the immutable image layer.
+**Approach:** Bake migrations and import into `RUN` steps in `Dockerfile`. Every container starts with a pre-populated database.
 
 ```dockerfile
 RUN python manage.py migrate --noinput && \
     python manage.py import_books books.csv
 ```
 
-The `release_command` is removed from `fly.toml` entirely. Every deployed container starts with a fully populated database already on disk at `/code/db.sqlite3`.
+This worked well for a read-only catalog — simple, reliable, no runtime dependencies.
 
-**Why this works for this app:** The book catalog is read-only and static. There are no user writes, no per-instance state, and no need for the database to survive beyond a deployment. Baking the database into the image is actually the most reliable strategy for a read-only dataset.
+### Phase 4 — PostgreSQL via Docker Compose (current) ✅ Current approach
 
-**Trade-offs:**
-- ✅ Eliminates all volume-mount and release-command complexity
-- ✅ Every machine gets an identical, immediately-ready database
-- ✅ Rollbacks are safe — the old image has the old database
-- ❌ Docker image is larger (~6MB for the SQLite file)
-- ❌ Updating the dataset requires a full image rebuild and redeploy
-- ❌ Would not work if any writes to the database were needed
+**Approach:** Replace SQLite entirely with a PostgreSQL 16 container. Data lives in a named Docker volume (`postgres_data`) that persists across container restarts but is managed outside the image.
+
+The entrypoint script (see Decision 16) handles migrations and first-run book import at container startup. `fly.toml` uses `release_command = 'python manage.py migrate --noinput'` for the Fly.io deployment path.
+
+**Why the switch from Phase 3:** Phase 3 (baked SQLite) broke the moment the app was containerized with Docker Compose — migrations can't run at build time because the Postgres server isn't available yet. PostgreSQL is the natural fit once you have a compose network.
+
+**Data durability:**
+- Local dev: data persists in the `postgres_data` named volume between `docker compose up/down` cycles
+- Wiped only with `docker compose down -v` (explicit volume removal)
+- Fly.io: `release_command` runs migrations on each deploy; data lives in Fly Postgres
 
 ---
 
@@ -307,3 +304,98 @@ The header form is separate from the sidebar filter form. Submitting the header 
 | `title` | `title` |
 
 Sorting is decoupled from the default top-rated query — both the filtered and default (top-rated) querysets pass through the same sort step. A `<select>` in the results header changes the URL via JavaScript (`url.searchParams.set('sort', value)`) without resetting the page, preserving all other GET parameters.
+
+---
+
+## Decision 15: Book Detail Page
+
+**Chosen:** A dedicated route and template for individual book detail, using Django's `get_object_or_404`.
+
+**URL pattern:** `book/<int:pk>/` → `books:detail`
+
+**View:**
+```python
+def book_detail(request, pk):
+    book = get_object_or_404(Book, pk=pk)
+    return render(request, 'books/detail.html', {'book': book})
+```
+
+`get_object_or_404` is used rather than `Book.objects.get()` so that a missing PK returns an HTTP 404 (standard web behavior) rather than an unhandled 500.
+
+**Navigation from the list:** Search result rows are made clickable with an inline `onclick` handler:
+```html
+onclick="window.location='{% url 'books:detail' book.pk %}'"
+```
+
+This avoids wrapping the entire `<article>` in an `<a>` tag, which would require restructuring the 3-column grid layout. The trade-off is that the link is not keyboard-navigable or right-click-copyable as a native anchor would be. A more accessible implementation would use `<a>` with CSS `display: contents` or a stretch pseudo-element.
+
+**Detail page content:** Hero 2-column grid (large cover + metadata). Displays: cover (Open Library `-L` size, 200×292px), rating (48px serif number + star icons + count), facts grid (publication date, publisher, pages, language), identifiers (ISBN, ISBN-13, Book ID), and a back-navigation link (`javascript:history.back()`).
+
+---
+
+## Decision 16: Docker Compose Local Development + Entrypoint Startup Script
+
+**Chosen:** Docker Compose with two services (web + db) and a shell entrypoint for runtime initialization.
+
+**Compose architecture (`docker-compose.yml`):**
+
+```yaml
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: book_search
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/book_search
+    depends_on:
+      db:
+        condition: service_healthy
+```
+
+`depends_on: condition: service_healthy` prevents the web container from starting until `pg_isready` succeeds inside the db container. This eliminates a whole class of race conditions at startup.
+
+**Entrypoint script (`entrypoint.sh`):**
+
+```bash
+# Wait for the DB to accept connections (belt-and-suspenders beyond depends_on)
+until python -c "import psycopg2, os, sys; psycopg2.connect(os.environ.get('DATABASE_URL', '')); sys.exit(0)" 2>&1; do
+    sleep 2
+done
+
+python manage.py migrate --noinput
+
+BOOK_COUNT=$(python manage.py shell --no-startup -c \
+    "from books.models import Book; print(Book.objects.count())" 2>/dev/null | tail -1)
+if [ "$BOOK_COUNT" = "0" ]; then
+    python manage.py import_books books.csv
+fi
+
+exec "$@"
+```
+
+Key decisions within the entrypoint:
+
+- **Double-check with psycopg2:** Despite `depends_on: service_healthy`, the Python connection check runs as an extra guard — `pg_isready` only verifies the port is open, not that Postgres is ready to accept application connections.
+- **Conditional import:** Book import only runs when the table is empty. This prevents re-importing 11,127 books on every container restart. The named volume (`postgres_data`) persists data across restarts; only `docker compose down -v` triggers a fresh import.
+- **Shell noise fix:** `python manage.py shell` without `--no-startup` emits Django startup messages that pollute stdout and corrupt the count comparison. `--no-startup 2>/dev/null | tail -1` isolates the last line of output (the count).
+- **`exec "$@"`:** The entrypoint hands off to CMD (`gunicorn ...`) via exec, replacing the shell process so gunicorn receives signals (SIGTERM, etc.) directly from Docker.
+
+**Dockerfile changes to support this:**
+- `COPY pyproject.toml uv.lock /code/` — lockfile is now copied and used (`-r pyproject.toml`) to pin exact dependency versions rather than installing free-floating latest versions.
+- `RUN ... && chmod +x /code/entrypoint.sh` — makes the script executable inside the image.
+- `RUN python manage.py migrate && import_books` removed — initialization now happens at runtime, not build time, because Postgres isn't available during `docker build`.
+- `ENTRYPOINT ["/code/entrypoint.sh"]` added; `CMD` remains as the gunicorn invocation.
