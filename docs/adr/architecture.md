@@ -1,7 +1,7 @@
 # ADR: Book Search Application Architecture
 
 **Status:** Living document — updated commit by commit  
-**Last updated:** ffbfab6 — Add PRD and Quick Start documentation
+**Last updated:** 5ef9747 — Change Python version to 3.12
 
 ---
 
@@ -84,9 +84,9 @@ Book cover images are fetched directly from the Open Library API using ISBN. Thi
 
 ## Decision 6: Python Version
 
-**Chosen:** Python 3.12 (pinned via `.python-version`)
+**Chosen:** Python 3.12 (pinned via `.python-version`, `requires-python = ">=3.12"` in `pyproject.toml`)
 
-Initial version was 3.14 (alpha), immediately corrected to 3.12 — a stable LTS-track release compatible with all dependencies.
+The project was initially scaffolded targeting Python 3.14 (pre-release). It was immediately corrected to 3.12 — the most recent stable release with broad library support. Python 3.12 is pinned explicitly so that local environments and Docker images use the same interpreter version.
 
 ---
 
