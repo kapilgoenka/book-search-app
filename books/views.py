@@ -142,11 +142,29 @@ def book_search(request):
             books = books.filter(publisher__icontains=publisher)
             filters_applied = True
 
+        # Quick global search (title OR authors)
+        q = request.GET.get('q', '').strip()
+        if q:
+            books = books.filter(Q(title__icontains=q) | Q(authors__icontains=q))
+            filters_applied = True
+
     if not filters_applied:
-        books = Book.objects.filter(ratings_count__gte=1000).order_by('-average_rating', 'title')
+        books = Book.objects.filter(ratings_count__gte=1000)
+
+    # Apply sort
+    sort = request.GET.get('sort', '')
+    if sort == 'count':
+        books = books.order_by('-ratings_count')
+    elif sort == 'date':
+        books = books.order_by('-publication_date', 'title')
+    elif sort == 'title':
+        books = books.order_by('title')
+    else:
+        sort = 'rating'
+        books = books.order_by('-average_rating', 'title')
 
     # Pagination
-    paginator = Paginator(books, 25)  # 25 books per page
+    paginator = Paginator(books, 25)
     page_number = request.GET.get('page', 1)
     page_obj = paginator.get_page(page_number)
 
@@ -156,6 +174,8 @@ def book_search(request):
         'filters_applied': filters_applied,
         'total_results': paginator.count,
         'showing_top_rated': not filters_applied,
+        'sort': sort,
+        'q': request.GET.get('q', ''),
     }
 
     return render(request, 'books/search.html', context)

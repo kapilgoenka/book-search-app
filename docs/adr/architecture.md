@@ -1,7 +1,7 @@
 # ADR: Book Search Application Architecture
 
 **Status:** Living document — updated commit by commit  
-**Last updated:** Default landing page shows top-rated books
+**Last updated:** Full UI redesign — light design system, global search, sort
 
 ---
 
@@ -214,30 +214,53 @@ This endpoint is not protected by authentication. It is appropriate for a non-se
 
 ---
 
-## Decision 11: UI — Dark Theme and Layout
+## Decision 11: UI Design System
 
-**Chosen:** Dark theme implemented via inline CSS in `books/templates/books/base.html`
+### Phase 1 — Dark Theme (b616967, d4e2d12)
 
-The UI uses inline `<style>` blocks in the base template rather than separate CSS files. No CSS framework (Bootstrap, Tailwind) is used; all styling is hand-written.
+Inline `<style>` block in `base.html`, no CSS framework. Dark palette centered on `#1a1a1a` body / `#2d2d2d` panels. Max content width 1600px. Flexbox two-pane layout. System font stack (`-apple-system`, `Segoe UI`, etc.).
 
-**Color palette (dark theme, b616967):**
+### Phase 2 — Full Redesign (current)
 
-| Element | Color |
+The dark theme was replaced wholesale with a light editorial design system. The redesign touches every visual layer.
+
+**Why inline CSS was kept over a framework:** Same rationale as Phase 1 — a single-page app with no build step has no need for Tailwind or Bootstrap. The template remains self-contained.
+
+**Design system — CSS custom properties defined in `:root`:**
+
+| Variable | Value | Role |
+|---|---|---|
+| `--bg` | `#f6f4ef` | Page background (warm off-white) |
+| `--paper` | `#ffffff` | Card/cover backgrounds |
+| `--ink` | `#1a1a1a` | Primary text |
+| `--ink-2` | `#44443f` | Secondary text |
+| `--ink-3` | `#76746d` | Muted labels, metadata |
+| `--ink-4` | `#a9a69d` | Placeholders, disabled state |
+| `--rule` | `#e6e2d7` | Borders and dividers |
+| `--rule-2` | `#efece4` | Lighter dividers (book row separators) |
+| `--accent` | `oklch(0.55 0.10 55)` | Warm muted terracotta (stars, dot) |
+| `--focus` | `oklch(0.55 0.10 55 / 0.25)` | Focus ring |
+
+`oklch` was chosen for the accent color to give perceptually uniform lightness — it stays readable and accessible at the chosen chroma without needing manual dark/light adjustments.
+
+**Typography — Google Fonts CDN (3 families):**
+
+| Family | Use |
 |---|---|
-| Body background | `#1a1a1a` |
-| Panels (search / results) | `#2d2d2d` |
-| Navbar | `#000000` |
-| Primary text | `#e0e0e0` |
-| Secondary text | `#b0b0b0` |
-| Input backgrounds | Dark with lighter borders |
+| Source Serif 4 (400/500/600, optical size 8–60) | Page headings, book titles, rating numbers |
+| Inter (400/500/600) | Body text, labels, inputs |
+| JetBrains Mono (400/500) | Metadata, counts, filter group titles, pagination |
+
+Fonts are loaded via two `<link rel="preconnect">` hints + one stylesheet import in `base.html`. This is an external CDN dependency — the app requires internet access to render correctly. An alternative would be self-hosted fonts (avoids the CDN dependency but adds build complexity).
 
 **Layout:**
-- Two-pane layout: search filters panel on the left, results on the right
-- Max content width: 1600px, centered
-- Navbar constrained to match content width (1600px max, centered with `margin: 0 auto`)
-- Book logo: 📚 emoji used as a lightweight brand mark
+- CSS grid (`grid-template-columns: 260px 1fr`, `gap: 48px`) in `.shell` replacing the old flexbox container. Max width 1280px (down from 1600px).
+- Sidebar: `position: sticky; top: calc(57px + 24px)` — anchored below the sticky header with a gap. `max-height: calc(100vh - 57px - 48px); overflow-y: auto` so long filter lists scroll independently.
+- Book rows: 3-column grid (`96px 1fr auto`) — cover thumbnail, metadata, rating panel.
 
-**Why inline CSS over a framework:** For a single-page app with one developer, a framework adds dependency management and a learning curve that isn't justified. The template is self-contained and the styling is straightforward enough to maintain inline.
+**Book cover placeholder:** CSS hatched background using two layered `repeating-linear-gradient` patterns, replacing the old SVG inline fallback. Same Open Library ISBN cover API for real covers with `onerror` fallback to the placeholder.
+
+**Number formatting:** `django.contrib.humanize` added to `INSTALLED_APPS`; `{% load humanize %}` + `|intcomma` used in the template for ratings counts and page totals (e.g. "32,213 ratings" instead of "32213").
 
 ---
 
@@ -255,3 +278,32 @@ The original landing page showed a "Start Searching" placeholder when no filters
 **Template change:** The `{% if filters_applied or request.GET %}` gate was removed. The results panel now always renders. When `showing_top_rated` is True, the header reads "Top Rated Books"; when filters are active, it shows the result count as before.
 
 **Why not most popular (by ratings_count)?** Most popular would surface the most-read books, but those are already universally known (Harry Potter, Twilight, etc.). Top-rated with a meaningful count floor surfaces high-quality books that users may not have encountered.
+
+---
+
+## Decision 13: Global Quick-Search (`q` parameter)
+
+**Chosen:** A header search bar that submits a single `q` parameter, searched across `title` OR `authors` using Django's `Q` objects.
+
+```python
+books = books.filter(Q(title__icontains=q) | Q(authors__icontains=q))
+```
+
+The header form is separate from the sidebar filter form. Submitting the header search clears all sidebar filter state (only `?q=value` is in the URL). Submitting the sidebar form clears `q`. This keeps the two search modes distinct and avoids complex state-merging logic.
+
+`q` can be combined with sidebar filters if both are present in the URL (e.g. navigating back after using the header then adding a filter), since they are both handled in the same `if request.GET:` block.
+
+---
+
+## Decision 14: Result Sorting
+
+**Chosen:** A `sort` GET parameter with 4 options, applied as a final `.order_by()` after all filtering.
+
+| `sort` value | Order |
+|---|---|
+| `rating` (default) | `-average_rating, title` |
+| `count` | `-ratings_count` |
+| `date` | `-publication_date, title` |
+| `title` | `title` |
+
+Sorting is decoupled from the default top-rated query — both the filtered and default (top-rated) querysets pass through the same sort step. A `<select>` in the results header changes the URL via JavaScript (`url.searchParams.set('sort', value)`) without resetting the page, preserving all other GET parameters.
