@@ -1,7 +1,7 @@
 # ADR: Book Search Application Architecture
 
 **Status:** Living document — updated commit by commit  
-**Last updated:** b6d58b6 — Remove volume mount, use ephemeral storage for database
+**Last updated:** 727820f — Bake database into Docker image
 
 ---
 
@@ -175,6 +175,27 @@ This meant the volume mount was removed entirely and the runtime path check (`os
 **Trade-off acknowledged in the commit message:** "For a production app with user-generated data, you'd want to use PostgreSQL. For this read-only book catalog, ephemeral storage is fine."
 
 **Remaining problem:** `release_command` runs in a separate container from the main app. Files written during `release_command` are not guaranteed to persist into the app container's filesystem. This makes the database unreliable between the release phase and app startup.
+
+### Phase 3 — Database Baked into Docker Image (727820f) ✅ Current approach
+
+**Approach:** Run migrations and data import as `RUN` steps inside the `Dockerfile`, making the pre-populated SQLite database part of the immutable image layer.
+
+```dockerfile
+RUN python manage.py migrate --noinput && \
+    python manage.py import_books books.csv
+```
+
+The `release_command` is removed from `fly.toml` entirely. Every deployed container starts with a fully populated database already on disk at `/code/db.sqlite3`.
+
+**Why this works for this app:** The book catalog is read-only and static. There are no user writes, no per-instance state, and no need for the database to survive beyond a deployment. Baking the database into the image is actually the most reliable strategy for a read-only dataset.
+
+**Trade-offs:**
+- ✅ Eliminates all volume-mount and release-command complexity
+- ✅ Every machine gets an identical, immediately-ready database
+- ✅ Rollbacks are safe — the old image has the old database
+- ❌ Docker image is larger (~6MB for the SQLite file)
+- ❌ Updating the dataset requires a full image rebuild and redeploy
+- ❌ Would not work if any writes to the database were needed
 
 ---
 
