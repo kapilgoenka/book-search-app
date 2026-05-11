@@ -362,7 +362,7 @@
 
         <div class="list">
             {% for book in page_obj %}
-            <article class="book">
+            <article class="book" onclick="window.location='{% url 'books:detail' book.pk %}'" style="cursor:pointer;">
                 <div class="cover">
                     {% if book.isbn13 %}
                         <img src="https://covers.openlibrary.org/b/isbn/{{ book.isbn13 }}-M.jpg"

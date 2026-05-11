@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import JsonResponse
@@ -179,6 +179,11 @@ def book_search(request):
     }
 
     return render(request, 'books/search.html', context)
+
+
+def book_detail(request, pk):
+    book = get_object_or_404(Book, pk=pk)
+    return render(request, 'books/detail.html', {'book': book})
 
 
 def health_check(request):

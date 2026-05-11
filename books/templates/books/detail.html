@@ -1,0 +1,213 @@
+{% extends 'books/base.html' %}
+{% load humanize %}
+
+{% block title %}{{ book.title }} — Book Search{% endblock %}
+
+{% block extra_styles %}
+    .detail-shell {
+        max-width: 1280px; margin: 0 auto;
+        padding: 40px 32px;
+    }
+    .back {
+        display: inline-flex; align-items: center; gap: 8px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em;
+        color: var(--ink-3);
+        border-bottom: 1px solid transparent;
+        padding-bottom: 1px;
+        margin-bottom: 40px;
+        transition: color .15s;
+    }
+    .back:hover { color: var(--ink); border-color: var(--ink); }
+
+    .book-hero {
+        display: grid;
+        grid-template-columns: 200px 1fr;
+        gap: 56px;
+        align-items: start;
+        padding-bottom: 48px;
+        border-bottom: 1px solid var(--rule);
+    }
+    .hero-cover {
+        width: 200px; height: 292px;
+        background: var(--paper);
+        border: 1px solid var(--rule);
+        overflow: hidden;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        flex-shrink: 0;
+    }
+    .hero-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .hero-cover .ph {
+        width: 100%; height: 100%;
+        background:
+            linear-gradient(180deg, transparent 0 38%, rgba(0,0,0,0.04) 38% 39%, transparent 39% 100%),
+            repeating-linear-gradient(135deg, transparent 0 6px, rgba(0,0,0,0.025) 6px 7px);
+        display: flex; align-items: center; justify-content: center;
+        color: var(--ink-4);
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+    }
+    .hero-cover .ph span { transform: rotate(-90deg); white-space: nowrap; }
+
+    .hero-meta { min-width: 0; }
+    .hero-meta h1 {
+        margin: 0;
+        font-family: 'Source Serif 4', serif;
+        font-weight: 500; font-size: 36px;
+        line-height: 1.2; letter-spacing: -0.02em;
+    }
+    .hero-author {
+        margin-top: 10px;
+        font-size: 16px; color: var(--ink-2);
+    }
+    .hero-author em { font-style: italic; color: var(--ink-3); font-size: 14px; margin-right: 5px; }
+
+    .hero-rating {
+        display: flex; align-items: baseline; gap: 14px;
+        margin-top: 28px;
+        padding: 20px 0;
+        border-top: 1px solid var(--rule-2);
+        border-bottom: 1px solid var(--rule-2);
+    }
+    .rating-num {
+        font-family: 'Source Serif 4', serif;
+        font-size: 48px; font-weight: 500;
+        letter-spacing: -0.03em; line-height: 1;
+    }
+    .rating-num sup { font-size: 20px; color: var(--ink-3); vertical-align: super; margin-left: 2px; }
+    .rating-detail { display: flex; flex-direction: column; gap: 4px; }
+    .rating-stars { color: var(--accent); font-size: 14px; letter-spacing: 2px; }
+    .rating-stars .off { color: var(--ink-4); }
+    .rating-sub {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px; color: var(--ink-3); letter-spacing: 0.04em;
+    }
+
+    .facts-grid {
+        margin-top: 28px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 20px;
+    }
+    .fact { display: flex; flex-direction: column; gap: 4px; }
+    .fact-label {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px; text-transform: uppercase;
+        letter-spacing: 0.16em; color: var(--ink-3); font-weight: 500;
+    }
+    .fact-value {
+        font-size: 14px; color: var(--ink);
+    }
+
+    .identifiers {
+        margin-top: 40px;
+        padding-top: 32px;
+        border-top: 1px solid var(--rule);
+    }
+    .identifiers h2 {
+        margin: 0 0 20px;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 10px; text-transform: uppercase;
+        letter-spacing: 0.16em; color: var(--ink-3); font-weight: 500;
+    }
+    .id-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 20px;
+    }
+{% endblock %}
+
+{% block content %}
+<div class="detail-shell">
+
+    <a href="javascript:history.back()" class="back">&larr; Back to results</a>
+
+    <div class="book-hero">
+        <div class="hero-cover">
+            {% if book.isbn13 %}
+                <img src="https://covers.openlibrary.org/b/isbn/{{ book.isbn13 }}-L.jpg"
+                     alt="{{ book.title }}"
+                     onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                <div class="ph" style="display:none;"><span>No Cover</span></div>
+            {% elif book.isbn %}
+                <img src="https://covers.openlibrary.org/b/isbn/{{ book.isbn }}-L.jpg"
+                     alt="{{ book.title }}"
+                     onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                <div class="ph" style="display:none;"><span>No Cover</span></div>
+            {% else %}
+                <div class="ph"><span>No Cover</span></div>
+            {% endif %}
+        </div>
+
+        <div class="hero-meta">
+            <h1>{{ book.title }}</h1>
+            <div class="hero-author"><em>by</em>{{ book.authors }}</div>
+
+            {% if book.average_rating %}
+            <div class="hero-rating">
+                <div class="rating-num">{{ book.average_rating }}<sup>/5</sup></div>
+                <div class="rating-detail">
+                    <div class="rating-stars">
+                        {% if book.average_rating >= 1 %}★{% else %}<span class="off">★</span>{% endif %}{% if book.average_rating >= 2 %}★{% else %}<span class="off">★</span>{% endif %}{% if book.average_rating >= 3 %}★{% else %}<span class="off">★</span>{% endif %}{% if book.average_rating >= 4 %}★{% else %}<span class="off">★</span>{% endif %}{% if book.average_rating >= 5 %}★{% else %}<span class="off">★</span>{% endif %}
+                    </div>
+                    {% if book.ratings_count %}
+                        <div class="rating-sub">{{ book.ratings_count|intcomma }} ratings</div>
+                    {% endif %}
+                    {% if book.text_reviews_count %}
+                        <div class="rating-sub">{{ book.text_reviews_count|intcomma }} text reviews</div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="facts-grid">
+                {% if book.publication_date %}
+                <div class="fact">
+                    <span class="fact-label">Published</span>
+                    <span class="fact-value">{{ book.publication_date|date:"F j, Y" }}</span>
+                </div>
+                {% endif %}
+                {% if book.publisher %}
+                <div class="fact">
+                    <span class="fact-label">Publisher</span>
+                    <span class="fact-value">{{ book.publisher }}</span>
+                </div>
+                {% endif %}
+                {% if book.num_pages %}
+                <div class="fact">
+                    <span class="fact-label">Pages</span>
+                    <span class="fact-value">{{ book.num_pages|intcomma }}</span>
+                </div>
+                {% endif %}
+                <div class="fact">
+                    <span class="fact-label">Language</span>
+                    <span class="fact-value">{{ book.language_code|upper }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="identifiers">
+        <h2>Identifiers</h2>
+        <div class="id-grid">
+            {% if book.isbn %}
+            <div class="fact">
+                <span class="fact-label">ISBN</span>
+                <span class="fact-value">{{ book.isbn }}</span>
+            </div>
+            {% endif %}
+            {% if book.isbn13 %}
+            <div class="fact">
+                <span class="fact-label">ISBN-13</span>
+                <span class="fact-value">{{ book.isbn13 }}</span>
+            </div>
+            {% endif %}
+            <div class="fact">
+                <span class="fact-label">Book ID</span>
+                <span class="fact-value">{{ book.bookID }}</span>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
