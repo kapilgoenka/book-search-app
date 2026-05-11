@@ -11,25 +11,21 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /code
 
 # Copy dependency files for better layer caching
-COPY pyproject.toml /code/
+COPY pyproject.toml uv.lock /code/
 
-# Install dependencies using uv (gunicorn is now in pyproject.toml)
-RUN uv pip install --system --no-cache django gunicorn
+# Install dependencies from lockfile so versions are pinned
+RUN uv pip install --system --no-cache -r pyproject.toml
 
 # Copy application code
 COPY . /code
 
-# Create necessary directories
-RUN mkdir -p /code/staticfiles /code/media
+# Create necessary directories and make entrypoint executable
+RUN mkdir -p /code/staticfiles /code/media && chmod +x /code/entrypoint.sh
 
 # Collect static files
 RUN python manage.py collectstatic --noinput --clear || true
 
-# Run migrations and import data into the image
-RUN python manage.py migrate --noinput && \
-    python manage.py import_books books.csv
-
 EXPOSE 8000
 
-# Use gunicorn for production
+ENTRYPOINT ["/code/entrypoint.sh"]
 CMD ["gunicorn", "--bind", ":8000", "--workers", "2", "config.wsgi"]
