@@ -1,7 +1,7 @@
 # ADR: Book Search Application Architecture
 
 **Status:** Living document — updated commit by commit  
-**Last updated:** 533bddf — Add health check endpoint for debugging
+**Last updated:** b6d58b6 — Remove volume mount, use ephemeral storage for database
 
 ---
 
@@ -165,6 +165,16 @@ A `release_command` was added to run migrations and import data on each deploy:
 **Problem encountered:** Fly.io does **not** mount volumes during the `release_command` phase — the volume is only available to the running app process. So `release.sh` created the database at `/code/db.sqlite3`, but the running app looked for it at `/data/db.sqlite3` (which was empty).
 
 A secondary bug: `fly.toml` used `[mounts]` (single table) instead of `[[mounts]]` (array of tables), which caused the mount to be silently ignored. Fixed in a13b8b1.
+
+### Phase 2 — Ephemeral Storage (b6d58b6) ❌ Works but fragile
+
+**Approach:** Accept that the volume cannot be used during `release_command`. Instead, store the database at `/code/db.sqlite3` in both dev and prod. The `release_command` creates it there, and the app reads it from the same location.
+
+This meant the volume mount was removed entirely and the runtime path check (`os.path.exists('/data')`) was deleted. The database is recreated fresh on every deployment via `release_command`.
+
+**Trade-off acknowledged in the commit message:** "For a production app with user-generated data, you'd want to use PostgreSQL. For this read-only book catalog, ephemeral storage is fine."
+
+**Remaining problem:** `release_command` runs in a separate container from the main app. Files written during `release_command` are not guaranteed to persist into the app container's filesystem. This makes the database unreliable between the release phase and app startup.
 
 ---
 
