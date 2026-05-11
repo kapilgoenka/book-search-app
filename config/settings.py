@@ -77,15 +77,13 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 
 # Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
+import dj_database_url
 
-# Use /code/db.sqlite3 for both development and production
-# The database will be recreated on each deploy via release_command
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        default='postgresql://postgres:postgres@localhost:5432/book_search',
+        conn_max_age=600,
+    )
 }
 
 
